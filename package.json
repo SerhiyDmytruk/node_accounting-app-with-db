@@ -17,7 +17,10 @@
     "db:stop": "docker compose stop",
     "db:logs": "docker compose logs -f db",
     "db:reset": "docker compose down -v",
-    "build": "sequelize generate && tsc"
+    "build": "sequelize generate && tsc",
+    "test:watch": "jest --watch",
+    "test:user:watch": "npx jest tests/user.test.js --runInBand --verbose --watch ",
+    "test:expense:watch": "npx jest tests/expense.test.js --runInBand --verbose --watch "
   },
   "author": "Mate academy",
   "license": "GPL-3.0",

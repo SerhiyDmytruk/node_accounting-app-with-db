@@ -1,66 +1,94 @@
-const store = require('../data/store.js');
+const {
+  models: { User },
+} = require('../models/models');
 
-function getAllUsers(req, res) {
-  res.send(store.users);
+function handleControllerError(res, action, error) {
+  // eslint-disable-next-line no-console
+  console.error(`Smth bad with: ${action}`, error);
+  res.sendStatus(500);
 }
 
-function getUserById(req, res) {
-  const { id } = req.params;
-  const user = store.users.find((item) => item.id === Number(id));
+async function getAllUsers(req, res) {
+  try {
+    const users = await User.findAll();
 
-  if (!user) {
-    return res.sendStatus(404);
+    res.send(users);
+  } catch (error) {
+    handleControllerError(res, 'get', error);
   }
-
-  res.status(200).send(user);
 }
 
-function remove(req, res) {
-  const { id } = req.params;
-  const userIndex = store.users.findIndex((item) => item.id === Number(id));
+async function getUserById(req, res) {
+  try {
+    const { id } = req.params;
+    const user = await User.findByPk(Number(id));
 
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'Not found' });
+    if (!user) {
+      return res.sendStatus(404);
+    }
+
+    res.status(200).send(user);
+  } catch (error) {
+    handleControllerError(res, 'get', error);
   }
-
-  store.users.splice(userIndex, 1);
-
-  return res.sendStatus(204);
 }
 
-function create(req, res) {
-  const { name } = req.body;
+async function create(req, res) {
+  try {
+    const { name } = req.body;
 
-  if (!name) {
-    return res.sendStatus(400);
+    if (!name) {
+      return res.sendStatus(400);
+    }
+
+    const user = await User.create({ name });
+
+    res.status(201).send(user);
+  } catch (error) {
+    handleControllerError(res, 'create', error);
   }
-
-  const user = {
-    id: store.getNextUserId(),
-    name,
-  };
-
-  store.users.push(user);
-  res.status(201).send(user);
 }
 
-function update(req, res) {
-  const { id } = req.params;
-  const { name } = req.body;
+async function remove(req, res) {
+  try {
+    const { id } = req.params;
+    const user = await User.findByPk(Number(id));
 
-  const user = store.users.find((item) => item.id === Number(id));
+    if (!user) {
+      return res.status(404).json({ error: 'Not found' });
+    }
 
-  if (!user) {
-    return res.status(404).json({ error: 'Not found' });
+    await user.destroy();
+
+    return res.sendStatus(204);
+  } catch (error) {
+    handleControllerError(res, 'remove', error);
   }
+}
 
-  if (!name) {
-    return res.status(400).json({ error: 'Bad Request' });
+async function update(req, res) {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    const user = await User.findByPk(Number(id));
+
+    if (!user) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    if (!name) {
+      return res.status(400).json({ error: 'Bad Request' });
+    }
+
+    user.name = name;
+
+    await user.save();
+
+    return res.status(200).send(user);
+  } catch (error) {
+    handleControllerError(res, 'update', error);
   }
-
-  user.name = name;
-
-  return res.status(200).send(user);
 }
 
 module.exports = {

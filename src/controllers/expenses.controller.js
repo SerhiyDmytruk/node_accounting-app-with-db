@@ -1,114 +1,135 @@
-const store = require('../data/store.js');
+const { Op } = require('sequelize');
 
-function getAllExpenses(req, res) {
-  const { userId, categories, from, to } = req.query;
+const {
+  models: { Expense, User },
+} = require('../models/models');
 
-  const fromTime = from ? new Date(from).getTime() : null;
-  const toTime = to ? new Date(to).getTime() : null;
-
-  const filtered = store.expenses.filter((expense) => {
-    if (userId && expense.userId !== Number(userId)) {
-      return false;
-    }
-
-    if (categories && expense.category !== categories) {
-      return false;
-    }
-
-    const spentAtTime = new Date(expense.spentAt).getTime();
-
-    if (fromTime !== null && spentAtTime < fromTime) {
-      return false;
-    }
-
-    if (toTime !== null && spentAtTime > toTime) {
-      return false;
-    }
-
-    return true;
-  });
-
-  res.send(filtered);
+function handleControllerError(res, action, error) {
+  // eslint-disable-next-line no-console
+  console.error(`Smth bad with: ${action}`, error);
+  res.sendStatus(500);
 }
 
-function getExpenseById(req, res) {
-  const { id } = req.params;
+async function getAllExpenses(req, res) {
+  try {
+    const { userId, categories, from, to } = req.query;
 
-  const expens = store.expenses.find((item) => item.id === Number(id));
+    const where = {};
 
-  if (!expens) {
-    return res.sendStatus(404);
+    if (userId) {
+      where.userId = Number(userId);
+    }
+
+    if (categories) {
+      where.category = categories;
+    }
+
+    if (from || to) {
+      where.spentAt = {};
+
+      if (from) {
+        where.spentAt[Op.gte] = new Date(from);
+      }
+
+      if (to) {
+        where.spentAt[Op.lte] = new Date(to);
+      }
+    }
+
+    const expenses = await Expense.findAll({
+      where,
+      order: [['id', 'ASC']],
+    });
+
+    res.send(expenses);
+  } catch (error) {
+    handleControllerError(res, 'getAllExpenses', error);
   }
-
-  res.status(200).send(expens);
 }
 
-function remove(req, res) {
-  const { id } = req.params;
+async function getExpenseById(req, res) {
+  try {
+    const { id } = req.params;
+    const expense = await Expense.findByPk(Number(id));
 
-  const expenseIndex = store.expenses.findIndex(
-    (item) => item.id === Number(id),
-  );
+    if (!expense) {
+      return res.sendStatus(404);
+    }
 
-  if (expenseIndex === -1) {
-    return res.status(404).json({ error: 'Not found' });
+    res.status(200).send(expense);
+  } catch (error) {
+    handleControllerError(res, 'getExpenseById', error);
   }
-
-  store.expenses.splice(expenseIndex, 1);
-
-  return res.sendStatus(204);
 }
 
-function create(req, res) {
-  const { userId, spentAt, title, amount, category, note } = req.body;
+async function remove(req, res) {
+  try {
+    const { id } = req.params;
+    const expense = await Expense.findByPk(Number(id));
 
-  if (
-    userId === undefined ||
-    !spentAt ||
-    !title ||
-    amount === undefined ||
-    !category
-  ) {
-    return res.status(400).json({ error: 'Bad Request' });
+    if (!expense) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    await expense.destroy();
+
+    return res.sendStatus(204);
+  } catch (error) {
+    handleControllerError(res, 'remove', error);
   }
-
-  const findUser = store.users.find((item) => item.id === Number(userId));
-
-  if (!findUser) {
-    return res.sendStatus(400);
-  }
-
-  const expenses = {
-    id: store.getNextExpenseId(),
-    userId,
-    spentAt,
-    title,
-    amount,
-    category,
-    note,
-  };
-
-  store.expenses.push(expenses);
-  res.status(201).send(expenses);
 }
 
-function update(req, res) {
-  const { id } = req.params;
-  const { title } = req.body;
+async function create(req, res) {
+  try {
+    const { userId, spentAt, title, amount, category, note } = req.body;
 
-  const expens = store.expenses.find((item) => item.id === Number(id));
+    if (userId === undefined || !spentAt || !title || amount === undefined) {
+      return res.status(400).json({ error: 'Bad Request' });
+    }
 
-  if (!expens) {
-    return res.status(404).json({ error: 'Not found' });
+    const user = await User.findByPk(Number(userId));
+
+    if (!user) {
+      return res.sendStatus(400);
+    }
+
+    const expense = await Expense.create({
+      userId,
+      spentAt,
+      title,
+      amount,
+      category,
+      note,
+    });
+
+    res.status(201).send(expense);
+  } catch (error) {
+    handleControllerError(res, 'create', error);
   }
+}
 
-  if (!title) {
-    return res.status(400).json({ error: 'Bad Request' });
+async function update(req, res) {
+  try {
+    const { id } = req.params;
+    const { title } = req.body;
+
+    const expens = await Expense.findByPk(Number(id));
+
+    if (!expens) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    if (!title) {
+      return res.status(400).json({ error: 'Bad Request' });
+    }
+
+    expens.title = title;
+    await expens.save();
+
+    return res.status(200).send(expens);
+  } catch (error) {
+    handleControllerError(res, 'update', error);
   }
-
-  expens.title = title;
-
-  return res.status(200).send(expens);
 }
 
 module.exports = {
