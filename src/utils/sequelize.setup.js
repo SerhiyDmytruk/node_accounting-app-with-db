@@ -1,5 +1,7 @@
-import { User } from '../models/User.model.js';
-import { Expense } from '../models/Expense.model.js';
+'use strict';
 
-User.sync({ force: true });
-Expense.sync({ force: true });
+const { sequelize } = require('../db');
+
+require('../models/models');
+
+sequelize.sync().then(() => sequelize.close());

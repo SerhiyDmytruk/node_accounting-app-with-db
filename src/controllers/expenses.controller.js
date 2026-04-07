@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 
 const {
-  models: { Expense, User },
+  models: { Expense, User, Category },
 } = require('../models/models');
 
 function handleControllerError(res, action, error) {
@@ -12,7 +12,7 @@ function handleControllerError(res, action, error) {
 
 async function getAllExpenses(req, res) {
   try {
-    const { userId, categories, from, to } = req.query;
+    const { userId, categoryId, categories, from, to } = req.query;
 
     const where = {};
 
@@ -20,8 +20,20 @@ async function getAllExpenses(req, res) {
       where.userId = Number(userId);
     }
 
+    if (categoryId) {
+      where.categoryId = Number(categoryId);
+    }
+
     if (categories) {
-      where.category = categories;
+      const category = await Category.findOne({
+        where: { name: categories },
+      });
+
+      if (!category) {
+        return res.send([]);
+      }
+
+      where.categoryId = category.id;
     }
 
     if (from || to) {
@@ -81,7 +93,7 @@ async function remove(req, res) {
 
 async function create(req, res) {
   try {
-    const { userId, spentAt, title, amount, category, note } = req.body;
+    const { userId, spentAt, title, amount, categoryId, note } = req.body;
 
     if (userId === undefined || !spentAt || !title || amount === undefined) {
       return res.status(400).json({ error: 'Bad Request' });
@@ -93,12 +105,20 @@ async function create(req, res) {
       return res.sendStatus(400);
     }
 
+    if (categoryId !== undefined) {
+      const category = await Category.findByPk(Number(categoryId));
+
+      if (!category) {
+        return res.sendStatus(400);
+      }
+    }
+
     const expense = await Expense.create({
       userId,
       spentAt,
       title,
       amount,
-      category,
+      categoryId,
       note,
     });
 
@@ -111,11 +131,11 @@ async function create(req, res) {
 async function update(req, res) {
   try {
     const { id } = req.params;
-    const { title } = req.body;
+    const { title, categoryId } = req.body;
 
-    const expens = await Expense.findByPk(Number(id));
+    const expense = await Expense.findByPk(Number(id));
 
-    if (!expens) {
+    if (!expense) {
       return res.status(404).json({ error: 'Not found' });
     }
 
@@ -123,10 +143,20 @@ async function update(req, res) {
       return res.status(400).json({ error: 'Bad Request' });
     }
 
-    expens.title = title;
-    await expens.save();
+    if (categoryId !== undefined) {
+      const category = await Category.findByPk(Number(categoryId));
 
-    return res.status(200).send(expens);
+      if (!category) {
+        return res.sendStatus(400);
+      }
+
+      expense.categoryId = categoryId;
+    }
+
+    expense.title = title;
+    await expense.save();
+
+    return res.status(200).send(expense);
   } catch (error) {
     handleControllerError(res, 'update', error);
   }
