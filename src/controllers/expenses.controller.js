@@ -10,6 +10,19 @@ function handleControllerError(res, action, error) {
   res.sendStatus(500);
 }
 
+function serializeExpense(expense) {
+  const plainExpense = expense.get({ plain: true });
+
+  if (plainExpense.Category) {
+    plainExpense.category = plainExpense.Category.name;
+  }
+
+  delete plainExpense.Category;
+  delete plainExpense.categoryId;
+
+  return plainExpense;
+}
+
 async function getAllExpenses(req, res) {
   try {
     const { userId, categoryId, categories, from, to } = req.query;
@@ -50,10 +63,11 @@ async function getAllExpenses(req, res) {
 
     const expenses = await Expense.findAll({
       where,
+      include: Category,
       order: [['id', 'ASC']],
     });
 
-    res.send(expenses);
+    res.send(expenses.map(serializeExpense));
   } catch (error) {
     handleControllerError(res, 'getAllExpenses', error);
   }
@@ -62,13 +76,15 @@ async function getAllExpenses(req, res) {
 async function getExpenseById(req, res) {
   try {
     const { id } = req.params;
-    const expense = await Expense.findByPk(Number(id));
+    const expense = await Expense.findByPk(Number(id), {
+      include: Category,
+    });
 
     if (!expense) {
       return res.sendStatus(404);
     }
 
-    res.status(200).send(expense);
+    res.status(200).send(serializeExpense(expense));
   } catch (error) {
     handleControllerError(res, 'getExpenseById', error);
   }
@@ -93,7 +109,8 @@ async function remove(req, res) {
 
 async function create(req, res) {
   try {
-    const { userId, spentAt, title, amount, categoryId, note } = req.body;
+    const { userId, spentAt, title, amount, category, categoryId, note } =
+      req.body;
 
     if (userId === undefined || !spentAt || !title || amount === undefined) {
       return res.status(400).json({ error: 'Bad Request' });
@@ -105,10 +122,20 @@ async function create(req, res) {
       return res.sendStatus(400);
     }
 
-    if (categoryId !== undefined) {
-      const category = await Category.findByPk(Number(categoryId));
+    let resolvedCategoryId = categoryId;
 
-      if (!category) {
+    if (category) {
+      const [categoryModel] = await Category.findOrCreate({
+        where: { name: category },
+      });
+
+      resolvedCategoryId = categoryModel.id;
+    }
+
+    if (resolvedCategoryId !== undefined) {
+      const categoryModel = await Category.findByPk(Number(resolvedCategoryId));
+
+      if (!categoryModel) {
         return res.sendStatus(400);
       }
     }
@@ -118,11 +145,15 @@ async function create(req, res) {
       spentAt,
       title,
       amount,
-      categoryId,
+      categoryId: resolvedCategoryId,
       note,
     });
 
-    res.status(201).send(expense);
+    const createdExpense = await Expense.findByPk(expense.id, {
+      include: Category,
+    });
+
+    res.status(201).send(serializeExpense(createdExpense));
   } catch (error) {
     handleControllerError(res, 'create', error);
   }
@@ -131,9 +162,11 @@ async function create(req, res) {
 async function update(req, res) {
   try {
     const { id } = req.params;
-    const { title, categoryId } = req.body;
+    const { title, category, categoryId } = req.body;
 
-    const expense = await Expense.findByPk(Number(id));
+    const expense = await Expense.findByPk(Number(id), {
+      include: Category,
+    });
 
     if (!expense) {
       return res.status(404).json({ error: 'Not found' });
@@ -143,20 +176,34 @@ async function update(req, res) {
       return res.status(400).json({ error: 'Bad Request' });
     }
 
-    if (categoryId !== undefined) {
-      const category = await Category.findByPk(Number(categoryId));
+    let resolvedCategoryId = categoryId;
 
-      if (!category) {
+    if (category) {
+      const [categoryModel] = await Category.findOrCreate({
+        where: { name: category },
+      });
+
+      resolvedCategoryId = categoryModel.id;
+    }
+
+    if (resolvedCategoryId !== undefined) {
+      const categoryModel = await Category.findByPk(Number(resolvedCategoryId));
+
+      if (!categoryModel) {
         return res.sendStatus(400);
       }
 
-      expense.categoryId = categoryId;
+      expense.categoryId = resolvedCategoryId;
     }
 
     expense.title = title;
     await expense.save();
 
-    return res.status(200).send(expense);
+    const updatedExpense = await Expense.findByPk(expense.id, {
+      include: Category,
+    });
+
+    return res.status(200).send(serializeExpense(updatedExpense));
   } catch (error) {
     handleControllerError(res, 'update', error);
   }
